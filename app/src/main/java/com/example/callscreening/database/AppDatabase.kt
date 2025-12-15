@@ -39,9 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
         private suspend fun insertSampleData(database: AppDatabase) {
             val dao = database.callerInfoDao()
 
-            // Проверяем, есть ли уже данные
+            // Добавляем тестовые номера
             if (dao.getAllCallers().isEmpty()) {
-                // Добавляем тестовые номера
                 dao.insertCallerInfo(
                     CallerInfoEntity(
                         phoneNumber = "+1234567890",
@@ -50,7 +49,6 @@ abstract class AppDatabase : RoomDatabase() {
                         isSpam = false
                     )
                 )
-
                 dao.insertCallerInfo(
                     CallerInfoEntity(
                         phoneNumber = "+79375470385",
@@ -59,7 +57,6 @@ abstract class AppDatabase : RoomDatabase() {
                         isSpam = true
                     )
                 )
-
                 dao.insertCallerInfo(
                     CallerInfoEntity(
                         phoneNumber = "+11111111111",

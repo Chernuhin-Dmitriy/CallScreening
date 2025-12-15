@@ -6,11 +6,15 @@ import android.telecom.CallScreeningService
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.example.callscreening.database.AppDatabase
+import com.example.callscreening.repository.CallScreeningRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 class MyCallScreeningService : CallScreeningService() {
 
@@ -18,40 +22,19 @@ class MyCallScreeningService : CallScreeningService() {
         private const val TAG = "CallScreeningService"
     }
 
+    // Scope с привязкой к жизненному циклу сервиса
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onScreenCall(callDetails: Call.Details) {
         Log.d(TAG, "onScreenCall вызван")
 
-        // Получаем информацию о звонке
-        val rawPhoneNumber = callDetails.handle?.schemeSpecificPart
-
-        // ОЧИЩАЕМ номер от пробелов и невидимых символов
-        val phoneNumber = rawPhoneNumber?.trim()?.replace("\\s+".toRegex(), "")
-
+        val phoneNumber = callDetails.handle?.schemeSpecificPart
         val timestamp = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault())
             .format(Date())
 
-        // Логируем информацию о звонке с подробностями
-        Log.d(TAG, "RAW номер от Android: '$rawPhoneNumber'")
-        Log.d(TAG, "Очищенный номер: '$phoneNumber'")
-        Log.d(TAG, "Поступил звонок:")
-        Log.d(TAG, "Номер: $phoneNumber")
+        Log.d(TAG, "Номер: '$phoneNumber'")
         Log.d(TAG, "Время: $timestamp")
-
-        // Проверяем статус верификации номера (для определения спама)
-        when (callDetails.callerNumberVerificationStatus) {
-            android.telecom.Connection.VERIFICATION_STATUS_FAILED -> {
-                Log.d(TAG, "Верификация не пройдена - возможно спам")
-            }
-
-            android.telecom.Connection.VERIFICATION_STATUS_PASSED -> {
-                Log.d(TAG, "Верификация пройдена - звонок легитимный")
-            }
-
-            else -> {
-                Log.d(TAG, "Верификация не выполнена")
-            }
-        }
 
         // Сохраняем информацию о звонке
         val callLog = CallLog(
@@ -72,50 +55,44 @@ class MyCallScreeningService : CallScreeningService() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val database = AppDatabase.getDatabase(applicationContext)
+                val dao = database.callerInfoDao()
+                val repository = CallScreeningRepository.getInstance(dao)
 
-                // 1. Проверяем все записи в БД
-                val allCallers = database.callerInfoDao().getAllCallers()
-                Log.d(TAG, "Всего записей в БД: ${allCallers.size}")
-
-                // Логируем все номера в БД для сравнения
-                allCallers.forEachIndexed { index, caller ->
-                    Log.d(TAG, "БД[$index]: '${caller.phoneNumber}' (длина: ${caller.phoneNumber.length})")
-                }
-
-                val callerInfo = phoneNumber?.let {
-                    Log.d(TAG, "Ищем в БД номер: '$it' (длина: ${it.length})")
-                    database.callerInfoDao().getCallerInfo(it)
-                }
+                val callerInfo = repository.getCallerInfo(phoneNumber ?: "")
 
                 Log.d(TAG, "Результат из БД: ${callerInfo?.name ?: "NULL"}")
 
                 if (callerInfo != null) {
-                    Log.d(TAG, "=== ДАННЫЕ ИЗ БД НАЙДЕНЫ ===")
+                    Log.d(TAG, "=== НАЙДЕНО В БД ===")
                     Log.d(TAG, "Имя: ${callerInfo.name}")
                     Log.d(TAG, "Компания: ${callerInfo.company}")
-                    Log.d(TAG, "Спам: ${if (callerInfo.isSpam) "ДА" else "НЕТ"}")
-                    Log.d(TAG, "================================")
+                    Log.d(TAG, "Спам: ${callerInfo.isSpam}")
 
-                    // Сохраняем расширенную информацию
                     val enhancedCallLog = callLog.copy(
                         callerName = callerInfo.name,
                         callerCompany = callerInfo.company,
                         isSpam = callerInfo.isSpam
                     )
-                    CallScreeningRepository.addCallLog(enhancedCallLog)
+                    repository.addCallLog(enhancedCallLog)
                 } else {
                     Log.d(TAG, "Номер не найден в БД")
-                    CallScreeningRepository.addCallLog(callLog)
+                    repository.addCallLog(callLog)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при работе с БД: ${e.message}")
                 e.printStackTrace()
-                CallScreeningRepository.addCallLog(callLog)
+                CallScreeningRepository.getInstance(null).addCallLog(callLog)
             }
         }
 
         respondToCall(callDetails, response)
 
         Log.d(TAG, "Ответ отправлен - звонок разрешен")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+        Log.d(TAG, "Сервис уничтожен")
     }
 }

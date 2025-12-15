@@ -1,8 +1,5 @@
 package com.example.callscreening
 
-import android.app.role.RoleManager
-import android.content.Context
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,10 +12,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -27,42 +26,36 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.callscreening.ui.theme.CallScreeningTheme
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var viewModel: CallScreeningViewModel
+
     private val roleRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            // Call screening
-        }
+        val isGranted = result.resultCode == RESULT_OK
+        viewModel.onRoleRequestResult(isGranted)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            CallScreeningTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     CallScreeningScreen(
-                        onRequestRole = { requestCallScreeningRole() }
+                        onViewModelCreated = { vm -> viewModel = vm },
+                        onRequestRole = { viewModel.requestCallScreeningRole(roleRequestLauncher) }
                     )
                 }
-            }
-        }
-    }
-
-    private fun requestCallScreeningRole() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = getSystemService(Context.ROLE_SERVICE) as RoleManager
-
-            if (!roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
-                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
-                roleRequestLauncher.launch(intent)
             }
         }
     }
@@ -70,57 +63,109 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CallScreeningScreen(
+    onViewModelCreated: (CallScreeningViewModel) -> Unit = {},
     onRequestRole: () -> Unit,
     viewModel: CallScreeningViewModel = viewModel()
 ) {
-    val callLogs by viewModel.callLogs.collectAsState()
+    // Передаем ViewModel в Activity
+    onViewModelCreated(viewModel)
+
+    val uiState by viewModel.uiState.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(Dimens.paddingMedium),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Call Screening Service",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(bottom = Dimens.paddingLarge)
         )
 
-        Button(
-            onClick = onRequestRole,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            Text("Активировать Call Screening")
-        }
-
-        Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-        Text(
-            text = "Журнал входящих звонков",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        if (callLogs.isEmpty()) {
-            Text(
-                text = "Пока нет входящих звонков",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(32.dp)
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(callLogs.size) { index ->
-                    CallLogItem(callLog = callLogs[index])
-                }
+        when (val state = uiState) {
+            is CallScreeningUiState.Loading -> {
+                CircularProgressIndicator()
             }
+
+            is CallScreeningUiState.Success -> {
+                CallScreeningContent(
+                    callLogs = state.callLogs,
+                    isRoleGranted = state.isRoleGranted,
+                    onRequestRole = onRequestRole,
+                )
+            }
+
+            is CallScreeningUiState.Error -> {
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallScreeningContent(
+    callLogs: List<CallLog>,
+    isRoleGranted: Boolean,
+    onRequestRole: () -> Unit,
+) {
+    // Кнопка активации
+    Button(
+        onClick = onRequestRole,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Dimens.paddingSmall),
+        enabled = !isRoleGranted
+    ) {
+        Text(
+            text = if (isRoleGranted)
+                stringResource(R.string.role_granted)
+            else
+                stringResource(R.string.activate_call_screening)
+        )
+    }
+    HorizontalDivider(modifier = Modifier.padding(vertical = Dimens.paddingMedium))
+    Text(
+        text = stringResource(R.string.call_log_title),
+        style = MaterialTheme.typography.titleLarge,
+        modifier = Modifier.padding(bottom = Dimens.paddingMedium)
+    )
+
+    if (callLogs.isEmpty()) {
+        EmptyCallLogsPlaceholder()
+    } else {
+        CallLogsList(callLogs = callLogs)
+    }
+}
+
+@Composable
+private fun EmptyCallLogsPlaceholder() {
+    Text(
+        text = stringResource(R.string.no_calls_yet),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(Dimens.paddingXLarge)
+    )
+}
+
+@Composable
+private fun CallLogsList(callLogs: List<CallLog>) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(Dimens.paddingSmall)
+    ) {
+        items(
+            items = callLogs,
+            key = { log -> "${log.phoneNumber}_${log.timestamp}" }
+        ) { callLog ->
+            CallLogItem(callLog = callLog)
         }
     }
 }
@@ -129,7 +174,7 @@ fun CallScreeningScreen(
 fun CallLogItem(callLog: CallLog) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = Dimens.cardElevation),
         colors = CardDefaults.cardColors(
             containerColor = if (callLog.isSpam) {
                 MaterialTheme.colorScheme.errorContainer
@@ -141,11 +186,14 @@ fun CallLogItem(callLog: CallLog) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(Dimens.paddingMedium)
         ) {
             // Имя или номер
             Text(
-                text = callLog.callerName ?: "Номер: ${callLog.phoneNumber ?: "Скрыт"}",
+                text = callLog.callerName ?: stringResource(
+                    R.string.phone_number_format,
+                    callLog.phoneNumber ?: stringResource(R.string.hidden)
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = if (callLog.isSpam) {
                     MaterialTheme.colorScheme.error
@@ -154,18 +202,20 @@ fun CallLogItem(callLog: CallLog) {
                 }
             )
             // Компания (если есть)
-            if (callLog.callerCompany != null) {
+            callLog.callerCompany?.let { company ->
                 Text(
-                    text = callLog.callerCompany,
+                    text = company,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = Dimens.paddingXSmall)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(Dimens.paddingSmall))
+
             // Время
             Text(
-                text = callLog.timestamp,//"Время: ${callLog.timestamp}",
+                text = callLog.timestamp,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -180,4 +230,13 @@ fun CallLogItem(callLog: CallLog) {
             }
         }
     }
+}
+
+object Dimens {
+    val paddingXSmall = 2.dp
+    val paddingSmall = 8.dp
+    val paddingMedium = 16.dp
+    val paddingLarge = 24.dp
+    val paddingXLarge = 32.dp
+    val cardElevation = 2.dp
 }

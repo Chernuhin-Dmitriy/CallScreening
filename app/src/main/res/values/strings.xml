@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">CallScreening</string>
+
+    <!-- Buttons -->
+    <string name="activate_call_screening">Активировать Call Screening</string>
+    <string name="role_granted">Call Screening активирован</string>
+    <string name="clear_logs">Очистить журнал</string>
+
+    <!-- Call log -->
+    <string name="call_log_title">Журнал входящих звонков</string>
+    <string name="no_calls_yet">Пока нет входящих звонков</string>
+    <string name="phone_number_format">Номер: %1$s</string>
+    <string name="hidden">Скрыт</string>
+    <string name="spam_label">СПАМ !!!</string>
+
+    <!-- Errors -->
+    <string name="error_loading_data">Ошибка загрузки данных</string>
 </resources>

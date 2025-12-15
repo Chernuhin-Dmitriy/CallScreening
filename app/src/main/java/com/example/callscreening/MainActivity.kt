@@ -188,9 +188,21 @@ fun CallLogItem(callLog: CallLog) {
                 .fillMaxWidth()
                 .padding(Dimens.paddingMedium)
         ) {
-            // Имя или номер
+            // Имя (если есть)
+            callLog.callerName?.let { name ->
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (callLog.isSpam) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+            }
+            // Номер
             Text(
-                text = callLog.callerName ?: stringResource(
+                text = stringResource(
                     R.string.phone_number_format,
                     callLog.phoneNumber ?: stringResource(R.string.hidden)
                 ),

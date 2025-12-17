@@ -23,7 +23,12 @@ class MyCallScreeningService : CallScreeningService() {
     }
 
     // Scope с привязкой к жизненному циклу сервиса
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Получаем репозиторий из Application (если используете Application класс)
+    private val repository by lazy {
+        (application as CallScreeningApplication).repository
+    }
 
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onScreenCall(callDetails: Call.Details) {
@@ -49,15 +54,12 @@ class MyCallScreeningService : CallScreeningService() {
             .setSilenceCall(false)
             .setSkipCallLog(false)
             .setSkipNotification(false)
-            .build()
 
-        // Получаем данные из БД
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             try {
                 val database = AppDatabase.getDatabase(applicationContext)
                 val dao = database.callerInfoDao()
                 val repository = CallScreeningRepository.getInstance(dao)
-
                 val callerInfo = repository.getCallerInfo(phoneNumber ?: "")
 
                 Log.d(TAG, "Результат из БД: ${callerInfo?.name ?: "NULL"}")
@@ -67,6 +69,16 @@ class MyCallScreeningService : CallScreeningService() {
                     Log.d(TAG, "Имя: ${callerInfo.name}")
                     Log.d(TAG, "Компания: ${callerInfo.company}")
                     Log.d(TAG, "Спам: ${callerInfo.isSpam}")
+
+                    // ЕСЛИ НОМЕР СПАМ - БЛОКИРУЕМ ЗВОНОК
+                    if (callerInfo.isSpam) {
+                        Log.d(TAG, "!!! СПАМ-НОМЕР - БЛОКИРУЕМ !!!")
+                        response
+                            .setDisallowCall(true)
+                            .setRejectCall(true)
+                            .setSkipCallLog(true)
+                            .setSkipNotification(true)
+                    }
 
                     val enhancedCallLog = callLog.copy(
                         callerName = callerInfo.name,
@@ -79,14 +91,12 @@ class MyCallScreeningService : CallScreeningService() {
                     repository.addCallLog(callLog)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка при работе с БД: ${e.message}")
-                e.printStackTrace()
-                CallScreeningRepository.getInstance(null).addCallLog(callLog)
+                Log.e(TAG, "Ошибка при работе с БД: ${e.message}", e)
+                repository.addCallLog(callLog)
             }
         }
 
-        respondToCall(callDetails, response)
-
+        respondToCall(callDetails, response.build())
         Log.d(TAG, "Ответ отправлен - звонок разрешен")
     }
 

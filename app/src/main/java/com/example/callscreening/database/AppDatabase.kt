@@ -1,11 +1,14 @@
 package com.example.callscreening.database
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @Database(entities = [CallerInfoEntity::class], version = 1, exportSchema = false)
@@ -25,12 +28,19 @@ abstract class AppDatabase : RoomDatabase() {
                     "caller_screening_database"
                 )
                     .fallbackToDestructiveMigration()
+                    .addCallback(object : RoomDatabase.Callback() {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            super.onCreate(db)
+                            // Временный scope автоматически завершится после выполнения
+                            INSTANCE?.let { database ->
+                                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                                    insertSampleData(database)
+                                }
+                            }
+                        }
+                    })
                     .build()
 
-                // Добавляем тестовые данные
-                CoroutineScope(Dispatchers.IO).launch {
-                    insertSampleData(instance)
-                }
                 INSTANCE = instance
                 instance
             }

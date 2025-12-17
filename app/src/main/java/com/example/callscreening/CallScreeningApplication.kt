@@ -6,12 +6,10 @@ import com.example.callscreening.repository.CallScreeningRepository
 
 class CallScreeningApplication : Application() {
 
-    // Ленивая инициализация БД
+    // Ленивые инициализации БД и репозитория
     val database: AppDatabase by lazy {
         AppDatabase.getDatabase(this)
     }
-
-    // Ленивая инициализация репозитория
     val repository: CallScreeningRepository by lazy {
         CallScreeningRepository.getInstance(database.callerInfoDao())
     }

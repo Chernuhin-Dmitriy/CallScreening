@@ -105,13 +105,4 @@ class CallScreeningViewModel(
             )
         }
     }
-
-    /**
-     * Очищает журнал звонков (для тестирования)
-     */
-    fun clearCallLogs() {
-        viewModelScope.launch {
-            repository.clearCallLogs()
-        }
-    }
 }

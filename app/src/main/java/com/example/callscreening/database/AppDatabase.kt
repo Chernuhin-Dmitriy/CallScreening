@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "caller_screening_database"
                 )
                     .fallbackToDestructiveMigration()
-                    .addCallback(object : RoomDatabase.Callback() {
+                    .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
                             // Временный scope автоматически завершится после выполнения

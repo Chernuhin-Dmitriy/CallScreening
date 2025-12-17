@@ -25,7 +25,7 @@ class MyCallScreeningService : CallScreeningService() {
     // Scope с привязкой к жизненному циклу сервиса
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Получаем репозиторий из Application (если используете Application класс)
+    // Получаем репозиторий из Application
     private val repository by lazy {
         (application as CallScreeningApplication).repository
     }
@@ -47,15 +47,15 @@ class MyCallScreeningService : CallScreeningService() {
             timestamp = timestamp,
         )
 
-        // Отвечаем системе - разрешаем звонок
-        val response = CallResponse.Builder()
-            .setDisallowCall(false)
-            .setRejectCall(false)
-            .setSilenceCall(false)
-            .setSkipCallLog(false)
-            .setSkipNotification(false)
-
         serviceScope.launch {
+            // Отвечаем системе - разрешаем звонок
+            val response = CallResponse.Builder()
+                .setDisallowCall(false)
+                .setRejectCall(false)
+                .setSilenceCall(false)
+                .setSkipCallLog(false)
+                .setSkipNotification(false)
+
             try {
                 val database = AppDatabase.getDatabase(applicationContext)
                 val dao = database.callerInfoDao()
@@ -70,7 +70,7 @@ class MyCallScreeningService : CallScreeningService() {
                     Log.d(TAG, "Компания: ${callerInfo.company}")
                     Log.d(TAG, "Спам: ${callerInfo.isSpam}")
 
-                    // ЕСЛИ НОМЕР СПАМ - БЛОКИРУЕМ ЗВОНОК
+                    // Если номер спам - блокируем звонок
                     if (callerInfo.isSpam) {
                         Log.d(TAG, "!!! СПАМ-НОМЕР - БЛОКИРУЕМ !!!")
                         response
@@ -91,13 +91,14 @@ class MyCallScreeningService : CallScreeningService() {
                     repository.addCallLog(callLog)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка при работе с БД: ${e.message}", e)
-                repository.addCallLog(callLog)
+                Log.e(TAG, "Ошибка при работе с БД: ${e.message}")
+                e.printStackTrace()
+                CallScreeningRepository.getInstance(null).addCallLog(callLog)
+            } finally {
+                respondToCall(callDetails, response.build())
+                Log.d(TAG, "Ответ отправлен после проверки БД")
             }
         }
-
-        respondToCall(callDetails, response.build())
-        Log.d(TAG, "Ответ отправлен - звонок разрешен")
     }
 
     override fun onDestroy() {

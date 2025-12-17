@@ -88,7 +88,6 @@ fun CallScreeningScreen(
             is CallScreeningUiState.Loading -> {
                 CircularProgressIndicator()
             }
-
             is CallScreeningUiState.Success -> {
                 CallScreeningContent(
                     callLogs = state.callLogs,
@@ -96,7 +95,6 @@ fun CallScreeningScreen(
                     onRequestRole = onRequestRole,
                 )
             }
-
             is CallScreeningUiState.Error -> {
                 Text(
                     text = state.message,
